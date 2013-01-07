@@ -1,0 +1,150 @@
+\documentclass{article}
+
+\usepackage{todonotes}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{color}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{	keywordstyle=\color{blue},
+		commentstyle=\color{dkgreen},
+		stringstyle=\color{mauve},
+		numbers=left,
+		numberstyle=\tiny\color{gray},
+		stepnumber=2,
+		numbersep=5pt,
+		breaklines=true,
+		breakatwhitespace=false,
+		title=\lstname
+}
+
+\begin{document}
+
+\title{Controlling the Borgelt B500REP from a generic computer}
+\author{Roel Baardman, \nolinkurl{rbaardman@zonnet.nl}}
+\date{Based upon specs kindly provided by: \\ Mike Borgelt and Adrian Jansen  \url{www.borgeltinstruments.com}}
+\maketitle
+
+\newpage
+
+\tableofcontents
+
+\newpage
+\section{Introduction}
+I like computers, measuring, and I like gliding. What I like even more than either of those, are glide computers. This is why I started a project to build my own glide computer that performs real-time measurements. One of my problems was feedback to the pilot. In several situations I could see myself perform a measurement flight and need feedback about the measurement process. After some consideration, I figured that a generic dial in my dash would be perfectly readable (better than displays) and should be easy to control.
+
+So I wrote to Mike Borgelt about his second-seat variometers. I figured these would be solely controlled by the main unit, and thus should be controllable from my PC-based computer platform. Mike was cooperative, and I bought a B500 second-seat unit (B500REP). After that, I received the specs from Adrian. Some questions remained, but were answered pretty quickly. Then I wrote some code, debugged my CRC code, and struggled a bit. In the end I got it working. I then requested permission to share my code and the documentation, and got it from Mike. He only wanted me to mention him and Adrian, and include a link to his website.
+
+I hope this code will enable other people to easily build platforms for performing measurements on gliders and to rapidly build and prototypes for instruments and other means of feedback to a glider pilot.
+
+I am very grateful for receiving the specifications, since I believe that open-ness is the way forward. Also in the sport of gliding. Not a lot of manufacturers open up their communication interfaces, or even respond to requests to do so. Since Mike did, I would like to ask code implementers to mention Mike Borgelt and Adrian Jansen in their credits file, including the URL \url{www.borgeltinstruments.com}.
+
+\section{General setup}
+The general setup is pretty easy. A B500REP is connected to a power source and a USB-to-RS485 converter. This converter costs roughly 30 euros at the time of writing.
+
+\section{Wiring}
+The rear of the B500REP features an RJ45 socket, in which a generic UTP can be plugged. The pin-layout of this cable is as follows:
+
+HIER KOMT EEN TABEL MET DE 2 SOORTEN KABEL EN KLEURTJES ENZO
+
+\subsection{Power}
+The B500REP contains an ... as power regulator, which regulates power down to 5 Volts with a 0.5 Volt power loss. The B500REP is fed 6.5 Volts by the B500 main unit, but can also be powered using 12V. This will make the power regulator run a little bit hotter.
+
+\subsection{RS485}
+The RS485 bus utilizes 3 pins: A, B and Ground. 
+
+\section{Protocol}
+The B500REP implements the SNAP protocol. This is a small protocol, which enables one to send packets of information to the B500REP. The payload of these packets is used to set the position of the vario needle and to toggle the LEDs of the B500REP.
+
+\subsection{SNAP}
+\subsection{B500 protocol}
+The B500 protocol numbers the bytes differently from the SNAP protocol. So in the context of the B500, the payload of a SNAP packet is numbered differently than the header of the SNAP packet.
+
+In SNAP byte 8 of an 8-byte packet is sent first. Byte1 of the payload is sent first.
+
+\subsubsection{Packet format}
+\begin{itemize}
+\item[Byte1]{Low byte lift}
+\item[Byte2]{High byte lift}
+\item[Byte3]{LED bits}
+\item[Byte4]{Lift unit}
+\item[Byte5]{Audio level}
+\item[Byte6]{Low byte average lift}
+\item[Byte7]{High byte average lift}
+\item[Byte8]{Lift mode}
+\end{itemize}
+
+\subsubsection{Lift}
+Lift is encoded from -10000 to 12000. The value of -10000 roughly corresponds with an indication of -5 units on the B500. The value of 12000 roughly corresponds with an indication of +6 units on the B500. Too large or too small values do not appear to result in physical damage to the B500. The device appears to check its input before steering the needle.
+
+\subsubsection{LED bits}
+The 6 least significant bits are used to encode the status of the LEDs. Bits are encoded from least significant to most significant here.
+
+\todo{Insert here with all the bits and the LEDs}
+
+\begin{itemize}
+\item[Bit0]{Downdown}
+\item[Bit1]{Down}
+\item[Bit2]{Up}
+\item[Bit3]{Upup}
+\item[Bit4]{Minus}
+\item[Bit5]{Plus}
+\end{itemize}
+
+\subsubsection{Lift unit}
+This specifies the used lift unit. A value of 0 indicates meters per second, a value of 1 indicates knots. It appears this value is not used in the B500REP.
+
+\subsubsection{Audio level}
+This indicates the audio level, as set by the B500 main unit.
+
+\subsubsection{Lift average}
+This value indicates the 20 second lift average, and is encoded in the same manner as the other Lift parameter. It is at this point unclear if the B500REP responds differently to this parameter from the other Lift parameter.
+
+\subsubsection{Lift mode}
+This value indicates the lift mode as set by the B500 main unit.
+
+\todo{What does this value exactly mean?}
+
+\subsection{Example packets}
+\texttt{53 54 50 48 06 02 00 00 03 00 1E 00 00 01 DE AF}
+
+The decoding of this packet is as follows:
+\begin{itemize}
+\item[53]{Preamble}
+\item[54]{Sync byte}
+\item[50]{SNAP HDB2: 1 byte destination address, 1 byte source address}
+\item[48]{SNAP HDB1: 16 bit CRC, 8 byte payload}
+\item[06]{Destination address: 6 is the B500REP}
+\item[02]{Source address: 2 is the B500s sensornode}
+\item[00]{Low byte lift}
+\item[00]{High byte lift}
+\item[03]{LED bits: enable DownDown and Down}
+\item[00]{Lift unit: m/s}
+\item[1E]{Audio level}
+\item[00]{Low byte 20 sec lift average}
+\item[00]{High byte 20 sec lift average}
+\item[01]{Lift mode}
+\item[DE]{CCITT-CRC16 high byte}
+\item[AF]{CCITT-CRC16 low byte}
+\end{itemize}
+
+\section{Debugging}
+Since I needed some attempts to get everything working, I will document the issues I had briefly in this section.
+
+\subsection{SNAP CRC checking}
+
+\subsection{RS485 wiring}
+If you get no response at all from the B500REP and all the code appears to be okay, try swapping the A and B wire.
+
+\section{Code}
+
+\subsection{Header}
+\lstinputlisting[language=C++]{b500rep.h}
+
+\subsection{CPP}
+\lstinputlisting[language=C++]{b500rep.cpp}
+
+\end{document}
